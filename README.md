@@ -365,12 +365,12 @@ We executed a global evaluation test matching all **60 queries** against all **8
 
 | Recall Metric | Standard RAG | ReferentWeave | Absolute Performance Gain |
 | :--- | :---: | :---: | :---: |
-| **Recall @ 1** | 18.3% | **63.3%** | **+45.0% absolute** |
+| **Recall @ 1** | 18.3% | **65.0%** | **+46.7% absolute** |
 | **Recall @ 3** | 85.0% | **98.3%** | **+13.3% absolute** |
 | **Recall @ 5** | 88.3% | **100.0%** | **+11.7% absolute** |
 
 ### Key Findings
-*   **Recall@1 Gain (+45.0%)**: ReferentWeave more than triples the chances of locating the exact correct source chunk on the first attempt because pronoun-heavy queries now match semantic queries directly.
+*   **Recall@1 Gain (+46.7%)**: ReferentWeave more than triples the chances of locating the exact correct source chunk on the first attempt because pronoun-heavy queries now match semantic queries directly.
 *   **100% Top-5 Coverage**: By Recall@5, ReferentWeave achieves a **100% retrieval success rate**, meaning the correct document is guaranteed to be in the prompt context of the generator.
 
 ---

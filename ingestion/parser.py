@@ -53,14 +53,58 @@ def summarize_bloated_table(table_text: str) -> str:
         logger.error(f"Failed to generate table summary using Gemini: {e}. Keeping raw table text.")
         return table_text
 
+def is_digitally_born_pdf(file_path: Path) -> bool:
+    """
+    Checks if a PDF document has an embedded text layer (is digitally born).
+    We check the first few pages to see if any text can be extracted.
+    """
+    if file_path.suffix.lower() != ".pdf":
+        return True
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(file_path))
+        num_pages = len(reader.pages)
+        if num_pages == 0:
+            return False
+            
+        sample_pages = min(5, num_pages)
+        total_text_len = 0
+        for i in range(sample_pages):
+            page_text = reader.pages[i].extract_text() or ""
+            total_text_len += len(page_text.strip())
+            
+        has_text = total_text_len > (sample_pages * 10)
+        logger.info(f"Digitally born check for {file_path.name}: has_text_layer={has_text} (extracted {total_text_len} chars from {sample_pages} pages)")
+        return has_text
+    except Exception as e:
+        logger.warning(f"Error checking if PDF is digitally born: {e}. Defaulting to False.")
+        return False
+
 def parse_with_docling(file_path: Path) -> str:
     """
     Parses a PDF/Doc using IBM Docling, exporting to Markdown.
+    Skips OCR if the document is digitally born to prevent high memory consumption (OOM / std::bad_alloc).
     """
-    logger.info(f"Attempting to parse document {file_path.name} with IBM Docling...")
-    from docling.document_converter import DocumentConverter
+    digitally_born = is_digitally_born_pdf(file_path)
     
-    converter = DocumentConverter()
+    if digitally_born:
+        logger.info(f"Attempting to parse document {file_path.name} with IBM Docling (OCR disabled: digitally born)...")
+    else:
+        logger.info(f"Attempting to parse document {file_path.name} with IBM Docling (OCR enabled: scanned PDF)...")
+        
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.pipeline_options import PdfPipelineOptions
+    from docling.datamodel.base_models import InputFormat
+    
+    # Configure Docling to be lightweight (disable OCR only if digitally born)
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_ocr = not digitally_born
+    
+    converter = DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+        }
+    )
     result = converter.convert(str(file_path))
     markdown_text = result.document.export_to_markdown()
     logger.info("IBM Docling parsing completed successfully.")
@@ -87,9 +131,13 @@ def parse_document(file_path: Path) -> str:
     Loads and parses a PDF document using Docling or pypdf fallback.
     Runs pre-flight heuristic checks.
     """
+    text = ""
     try:
         # Attempt Docling
         text = parse_with_docling(file_path)
+        if not text or len(text.strip()) < 100:
+            logger.warning("Docling returned empty or extremely short text. Falling back to pypdf.")
+            text = parse_with_pypdf(file_path)
     except Exception as e:
         logger.warning(f"Docling parser failed or not available ({e}). Falling back to pypdf.")
         try:
