@@ -23,13 +23,16 @@ schema_builder.add_text_field("raw_text", stored=True)  # raw target text
 schema = schema_builder.build()
 
 class IndexingEngine:
-    def __init__(self):
+    def __init__(self, index_dir: Path = None):
+        # Use explicitly provided index_dir or fall back to global config
+        effective_dir = index_dir if index_dir is not None else INDEX_DIR
+        
         # Create directories
-        INDEX_DIR.mkdir(exist_ok=True, parents=True)
-        self.tv_path = INDEX_DIR / "turbovec.tvim"
-        self.tantivy_dir = INDEX_DIR / "tantivy"
+        effective_dir.mkdir(exist_ok=True, parents=True)
+        self.tv_path = effective_dir / "turbovec.tvim"
+        self.tantivy_dir = effective_dir / "tantivy"
         self.tantivy_dir.mkdir(exist_ok=True, parents=True)
-        self.metadata_path = INDEX_DIR / "chunks_store.json"
+        self.metadata_path = effective_dir / "chunks_store.json"
         
         # Initialize TurboVec
         if self.tv_path.exists():

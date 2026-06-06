@@ -11,9 +11,9 @@ from fastapi.staticfiles import StaticFiles
 
 from core.config import logger, UPLOAD_DIR
 from core.models import Chunk, QueryResult
-from ingestion.parser import parse_document, chunk_document_text, build_context_chunks
+from ingestion.parser import parse_document, chunk_document_text, build_context_chunks, build_context_chunks_from_enriched
 from ingestion.resolver import CoreferenceResolver
-from ingestion.enricher import enrich_chunk
+from ingestion.enricher import enrich_chunk, enrich_document
 from ingestion.embedder import IndexingEngine
 from retrieval.hybrid_search import HybridSearcher
 from retrieval.reranker import GeminiReranker
@@ -112,37 +112,30 @@ async def ingest_document(file: UploadFile = File(...)):
         text = parse_document(temp_file_path)
         trace.append(f"Successfully extracted {len(text)} characters of text.")
         
-        # 3. Chunk text
-        trace.append("Segmenting text into layout-aware logical chunks...")
-        raw_chunks = chunk_document_text(text)
+        # 3. Coreference resolution on the entire document (Single LLM pass)
+        trace.append("Resolving coreferences on the entire document using Gemini 3.1 Flash-Lite...")
+        res_response = resolver.resolve_document(text)
+        
+        high_conf = [r for r in res_response.resolutions if r.confidence == "high" and r.resolved_entity.upper() != "UNCERTAIN"]
+        resolutions_count = len(high_conf)
+        
+        # Log resolution trace for dashboard
+        for r in high_conf:
+            trace.append(f"Resolved coreference: '{r.original_phrase}' -> '{r.resolved_entity}' in sentence: '{r.original_sentence}'")
+            
+        # 4. Enrich full document text with context blocks
+        trace.append("Enriching document text with resolved context blocks...")
+        enriched_text = enrich_document(text, res_response.resolutions)
+        
+        # 5. Chunk the enriched text
+        trace.append("Segmenting enriched text into layout-aware logical chunks...")
+        raw_chunks = chunk_document_text(enriched_text)
         trace.append(f"Document chunked into {len(raw_chunks)} sections.")
         
-        # 4. Slide-pair context
-        trace.append("Building sliding window contexts (Predecessor + Current)...")
-        chunks = build_context_chunks(raw_chunks, doc_id)
+        # 6. Build typed context chunks from enriched chunks
+        trace.append("Building sliding window contexts from enriched chunks...")
+        resolved_chunks = build_context_chunks_from_enriched(raw_chunks, doc_id)
         
-        # 5. Coreference resolution
-        trace.append("Resolving coreferences using Gemini 3.1 Flash-Lite...")
-        resolutions_count = 0
-        resolved_chunks = []
-        
-        for idx, chunk in enumerate(chunks):
-            # Resolve vague references using previous chunk context
-            res_response = resolver.resolve(chunk.background_context, chunk.target_text)
-            
-            # Count high confidence resolutions
-            high_conf = [r for r in res_response.resolutions if r.confidence == "high" and r.resolved_entity.upper() != "UNCERTAIN"]
-            resolutions_count += len(high_conf)
-            
-            # Log resolution trace for dashboard
-            if high_conf:
-                items_str = ", ".join([f"'{r.original_phrase}' -> '{r.resolved_entity}'" for r in high_conf])
-                trace.append(f"Chunk {chunk.chunk_id} coreference(s) resolved: {items_str}")
-            
-            # Enrich chunk
-            enriched = enrich_chunk(chunk, res_response.resolutions)
-            resolved_chunks.append(enriched)
-            
         trace.append(f"Coreference resolution finished. Appended {resolutions_count} high-confidence references.")
         
         # 6. Ingest into vector & keyword search engines

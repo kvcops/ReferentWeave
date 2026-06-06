@@ -221,8 +221,8 @@ def chunk_document_text(text: str, max_chunk_len: int = 1000) -> List[Dict[str, 
                 table_summary = summarize_bloated_table(table_str)
                 processed_text = processed_text[:match.start()] + table_summary + processed_text[match.end():]
 
-    # Split by paragraphs or markdown headers
-    raw_splits = re.split(r"(?:\n\s*\n|(?=^#{1,4}\s))", processed_text, flags=re.MULTILINE)
+    # Split by paragraphs or markdown headers (with negative lookahead to prevent splitting Resolved Context Blocks)
+    raw_splits = re.split(r"(?:\n\s*\n(?!\[Resolved Context Block:)|(?=^#{1,4}\s))", processed_text, flags=re.MULTILINE)
     
     chunks = []
     current_chunk = ""
@@ -306,4 +306,40 @@ def build_context_chunks(raw_chunks: List[Dict[str, Any]], doc_id: str) -> List[
         ))
         
     logger.info(f"Successfully constructed {len(context_chunks)} sliding paired chunks.")
+    return context_chunks
+
+def strip_resolved_blocks(text: str) -> str:
+    """
+    Strips out any [Resolved Context Block: ...] blocks from the text.
+    """
+    pattern = re.compile(r"\n\n\[Resolved Context Block:\n.*?\]", re.DOTALL)
+    return pattern.sub("", text).strip()
+
+def build_context_chunks_from_enriched(raw_chunks: List[Dict[str, Any]], doc_id: str) -> List[Chunk]:
+    """
+    Builds typed Chunk objects from enriched chunks, extracting target_text and background_context.
+    """
+    logger.info("Pairing enriched chunks with predecessor context...")
+    context_chunks = []
+    
+    # Pre-calculate target_text for each raw chunk by stripping resolved blocks
+    target_texts = []
+    for chunk in raw_chunks:
+        raw_text = chunk["text"]
+        target_texts.append(strip_resolved_blocks(raw_text))
+        
+    for i, chunk in enumerate(raw_chunks):
+        background = target_texts[i-1] if i > 0 else ""
+        chunk_id = 1000 + i
+        
+        context_chunks.append(Chunk(
+            chunk_id=chunk_id,
+            doc_id=doc_id,
+            target_text=target_texts[i],
+            background_context=background,
+            enriched_text=chunk["text"],
+            metadata=chunk["metadata"]
+        ))
+        
+    logger.info(f"Successfully constructed {len(context_chunks)} sliding paired chunks from enriched text.")
     return context_chunks

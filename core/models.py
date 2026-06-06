@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Literal
+from typing import List, Dict, Any, Literal, Optional
 
 class Resolution(BaseModel):
+    original_sentence: Optional[str] = Field(default="", description="The exact full sentence or line in the text containing the vague reference/pronoun")
     original_phrase: str = Field(description="The pronoun, ambiguous noun, or vague reference found in the text (e.g. 'it', 'they', 'the project')")
     resolved_entity: str = Field(description="The resolved actual entity name from context, or 'UNCERTAIN' if it cannot be resolved with absolute certainty")
     confidence: Literal["high", "low"] = Field(description="Confidence level of resolution. Mark 'low' if you are guessing or unsure")
