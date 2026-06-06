@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ReferentWeave - Structure-Grounded RAG Dashboard</title>
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <div class="logo-icon">
+                    <i data-lucide="network"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>ReferentWeave</h1>
+                    <span>Safe Reference Resolver RAG</span>
+                </div>
+            </div>
+            
+            <nav class="nav-links">
+                <button class="nav-btn active" data-tab="ingest-tab">
+                    <i data-lucide="file-up"></i> Ingestion Engine
+                </button>
+                <button class="nav-btn" data-tab="chat-tab">
+                    <i data-lucide="message-square"></i> RAG Studio
+                </button>
+            </nav>
+
+            <div class="documents-section">
+                <div class="section-title">
+                    <i data-lucide="folder-open"></i> Ingested Documents
+                </div>
+                <div id="docs-list" class="docs-list">
+                    <div class="empty-docs-state">
+                        No documents uploaded yet.
+                    </div>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <div class="status-title">System Status</div>
+                <div class="status-item">
+                    <span class="status-label"><i data-lucide="cpu"></i> Resolver (Gemini 3.1)</span>
+                    <span class="status-value online">Active</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label"><i data-lucide="layers"></i> Dense Vector (TurboVec)</span>
+                    <span class="status-value online">Active</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label"><i data-lucide="hash"></i> Sparse Search (Tantivy)</span>
+                    <span class="status-value online">Active</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label"><i data-lucide="cloud"></i> Embedder (Jina v5)</span>
+                    <span class="status-value online">Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            
+            <!-- Ingest Tab -->
+            <section id="ingest-tab" class="tab-content active">
+                <div class="workspace-header">
+                    <h2>Ingestion Dashboard</h2>
+                    <p>Upload files to convert, resolve references, and index them into Tantivy & TurboVec.</p>
+                </div>
+
+                <div class="ingest-grid">
+                    <!-- Left: Upload Card -->
+                    <div class="glass-card upload-card">
+                        <div class="card-header">
+                            <i data-lucide="upload-cloud"></i>
+                            <h3>Upload New Document</h3>
+                        </div>
+                        <div class="drag-drop-area" id="drag-drop-area">
+                            <input type="file" id="file-input" accept=".pdf" style="display: none;">
+                            <i data-lucide="file-text" class="file-icon"></i>
+                            <p class="upload-instructions">Drag and drop your PDF here, or <span class="browse-link">browse</span></p>
+                            <p class="file-limits">PDF documents only</p>
+                        </div>
+                        <div id="upload-progress-container" class="upload-progress-container hidden">
+                            <div class="progress-details">
+                                <span id="progress-filename">filename.pdf</span>
+                                <span id="progress-percent">0%</span>
+                            </div>
+                            <div class="progress-bar-bg">
+                                <div id="progress-bar-fill" class="progress-bar-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Ingest Log Console -->
+                    <div class="glass-card log-card">
+                        <div class="card-header">
+                            <i data-lucide="terminal"></i>
+                            <h3>Real-Time Pipeline Trace</h3>
+                            <button id="clear-logs" class="icon-btn" title="Clear Console"><i data-lucide="trash-2"></i></button>
+                        </div>
+                        <div class="console-body" id="console-logs">
+                            <div class="console-line system">Console initialized. Ready for ingestion...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chat / RAG Studio Tab -->
+            <section id="chat-tab" class="tab-content">
+                <div class="workspace-header">
+                    <h2>RAG Studio</h2>
+                    <p>Query the grounding RAG pipeline, view reciprocal fusion steps, and examine context appending blocks.</p>
+                </div>
+
+                <div class="chat-grid">
+                    <!-- Left: Chat Panel -->
+                    <div class="glass-card chat-card">
+                        <div class="chat-messages" id="chat-messages">
+                            <div class="message assistant">
+                                <div class="message-content">
+                                    Hello! Ingest a document and ask a question. I will generate grounded answers using untouched text sections and provide exact reference citations.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="chat-input-area">
+                            <div class="filter-indicator hidden" id="filter-indicator">
+                                <span class="filter-badge">
+                                    <i data-lucide="filter"></i> Filtering active: <span id="active-filter-doc">doc</span>
+                                    <button class="remove-filter-btn" id="remove-filter-btn"><i data-lucide="x"></i></button>
+                                </span>
+                            </div>
+                            <form id="chat-form" class="chat-form">
+                                <input type="text" id="query-input" placeholder="Ask a question about your documents..." required>
+                                <button type="submit" class="send-btn"><i data-lucide="send"></i></button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Right: Retrieval Trace Panel -->
+                    <div class="glass-card trace-card">
+                        <div class="card-header border-bottom">
+                            <div class="header-tabs">
+                                <button class="trace-tab-btn active" data-trace-tab="answer-trace">Pipeline Trace</button>
+                                <button class="trace-tab-btn" data-trace-tab="source-chunks">Grounding Chunks</button>
+                            </div>
+                        </div>
+
+                        <div class="trace-content-body">
+                            <!-- Pipeline Trace Subtab -->
+                            <div id="answer-trace" class="trace-tab-content active">
+                                <div class="console-body mono" id="query-trace-console">
+                                    <div class="empty-trace-state">
+                                        <i data-lucide="search"></i>
+                                        <p>Submit a query to view execution logs</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Source Chunks Subtab -->
+                            <div id="source-chunks" class="trace-tab-content">
+                                <div class="chunks-container" id="chunks-container">
+                                    <div class="empty-trace-state">
+                                        <i data-lucide="database"></i>
+                                        <p>Grounding chunk documents will load here</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="/static/app.js"></script>
+</body>
+</html>
