@@ -3,7 +3,7 @@ import string
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-from core.config import logger
+from core.config import logger, MAX_DOCLING_PAGES
 from core.models import Chunk
 from google import genai
 
@@ -25,32 +25,47 @@ def is_dirty_pdf(text: str, threshold: float = 0.3) -> bool:
 
 def summarize_bloated_table(table_text: str) -> str:
     """
-    Uses Gemini 3.1 Flash-Lite to summarize a wide markdown table
-    into a 2-sentence structural summary.
+    Locally summarizes a markdown table in Python without using any external API calls.
+    Extracts headers, row counts, and a brief compact preview to preserve retrieval semantics.
     """
-    logger.info("Mitigating Table Header Bloat: generating structural summary for markdown table.")
+    logger.info("Mitigating Table Header Bloat: generating local structural summary for markdown table.")
     try:
-        from core.config import GEMINI_API_KEY, GEMINI_MODEL
-        if GEMINI_API_KEY:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-        else:
-            client = genai.Client()
+        lines = [line.strip() for line in table_text.strip().split("\n") if line.strip()]
+        if not lines:
+            return ""
+            
+        # Parse headers from the first line
+        header_line = lines[0]
+        headers = [h.strip() for h in header_line.split("|") if h.strip()]
         
-        prompt = (
-            "Summarize the following markdown table into exactly a 2-sentence structural summary. "
-            "Highlight the main columns, the entities described, and the key metrics or relationships. "
-            "Do not output any introductory or concluding text, only output the 2-sentence summary."
-        )
+        # Filter out line separators (e.g., containing only dashes, colons, or spaces)
+        row_lines = []
+        for line in lines[1:]:
+            # Check if this line is just a separator like |---|---|
+            clean_line = line.replace("|", "").replace("-", "").replace(":", "").strip()
+            if clean_line:
+                row_lines.append(line)
+                
+        row_count = len(row_lines)
+        headers_str = ", ".join(headers) if headers else "None"
         
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[prompt, table_text]
+        # Build a preview of the first 2 data rows
+        preview_rows = []
+        for r_line in row_lines[:2]:
+            r_cells = [c.strip() for c in r_line.split("|") if c.strip()]
+            if r_cells:
+                preview_rows.append(" | ".join(r_cells))
+                
+        preview_str = "; ".join(preview_rows) if preview_rows else "No data"
+        
+        summary = (
+            f"\n\n[Table Summary: Contains {row_count} rows across columns ({headers_str}). "
+            f"Preview data: {preview_str}]\n\n"
         )
-        summary = response.text.strip()
-        logger.info(f"Generated table summary: '{summary}'")
-        return f"\n\n[Table Summary: {summary}]\n\n"
+        logger.info(f"Generated local table summary for table with {row_count} rows.")
+        return summary
     except Exception as e:
-        logger.error(f"Failed to generate table summary using Gemini: {e}. Keeping raw table text.")
+        logger.error(f"Failed to locally summarize table: {e}. Keeping raw table text.")
         return table_text
 
 def is_digitally_born_pdf(file_path: Path) -> bool:
@@ -94,7 +109,7 @@ def parse_with_docling(file_path: Path) -> str:
         
     from docling.document_converter import DocumentConverter, PdfFormatOption
     from docling.datamodel.pipeline_options import PdfPipelineOptions
-    from docling.datamodel.base_models import InputFormat
+    from docling.datamodel.base_models import InputFormat, ConversionStatus
     
     # Configure Docling to be lightweight (disable OCR only if digitally born)
     pipeline_options = PdfPipelineOptions()
@@ -106,6 +121,14 @@ def parse_with_docling(file_path: Path) -> str:
         }
     )
     result = converter.convert(str(file_path))
+    
+    # If the conversion was not a complete success (e.g. PARTIAL_SUCCESS or FAILURE),
+    # raise a ValueError so we immediately fall back to pypdf instead of returning a truncated file.
+    if result.status != ConversionStatus.SUCCESS:
+        raise ValueError(
+            f"Docling conversion did not succeed completely (status: {result.status})."
+        )
+        
     markdown_text = result.document.export_to_markdown()
     logger.info("IBM Docling parsing completed successfully.")
     return markdown_text
@@ -132,6 +155,22 @@ def parse_document(file_path: Path) -> str:
     Runs pre-flight heuristic checks.
     """
     text = ""
+    # Precheck page count for PDFs to avoid C++ std::bad_alloc (OOM) on large documents
+    if file_path.suffix.lower() == ".pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(str(file_path))
+            num_pages = len(reader.pages)
+            if num_pages > MAX_DOCLING_PAGES:
+                logger.warning(
+                    f"Document '{file_path.name}' has {num_pages} pages, which exceeds the limit of "
+                    f"{MAX_DOCLING_PAGES} pages for Docling layout processing on this system. "
+                    f"Bypassing Docling entirely to avoid out-of-memory errors (std::bad_alloc). Falling back to pypdf."
+                )
+                return parse_with_pypdf(file_path)
+        except Exception as pe:
+            logger.warning(f"Failed to check PDF page count: {pe}. Proceeding to Docling.")
+
     try:
         # Attempt Docling
         text = parse_with_docling(file_path)

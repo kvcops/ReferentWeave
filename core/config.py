@@ -45,6 +45,7 @@ EMBEDDING_DIM = 1024
 TOP_K_RETRIEVAL = 50
 TOP_K_GENERATION = 5
 RRF_CONSTANT = 60
+MAX_DOCLING_PAGES = 30
 
 # Logger setup
 class ColoredFormatter(logging.Formatter):

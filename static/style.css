@@ -664,6 +664,82 @@ body {
     border-bottom-left-radius: 4px;
 }
 
+/* Styling for parsed Markdown elements in chat messages */
+.message-content p {
+    margin-bottom: 8px;
+}
+.message-content p:last-child {
+    margin-bottom: 0;
+}
+.message-content ul {
+    list-style-type: disc;
+    margin-bottom: 12px;
+    padding-left: 20px;
+}
+.message-content ol {
+    list-style-type: decimal;
+    margin-bottom: 12px;
+    padding-left: 20px;
+}
+.message-content li {
+    margin-bottom: 6px;
+    line-height: 1.6;
+}
+.message-content li:last-child {
+    margin-bottom: 0;
+}
+.message-content strong {
+    font-weight: 600;
+    color: #fff;
+}
+.message-content em {
+    font-style: italic;
+}
+.message-content h1, .message-content h2, .message-content h3, .message-content h4 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+    font-weight: 700;
+    color: #fff;
+}
+.message-content h1 { font-size: 1.35rem; }
+.message-content h2 { font-size: 1.2rem; }
+.message-content h3 { font-size: 1.05rem; }
+
+.message-content pre {
+    background-color: rgba(0, 0, 0, 0.4);
+    border: 1px solid hsl(var(--border-color));
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    margin: 10px 0;
+    overflow-x: auto;
+}
+.message-content code {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: #e2a8ff;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.message-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    color: #dedede;
+}
+.message-content a {
+    color: #79b7ff;
+    text-decoration: underline;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+.message-content a:hover {
+    color: #fff;
+}
+.chat-space {
+    height: 8px;
+}
+
 /* Footnotes inside generated text */
 .citation-link {
     display: inline-flex;

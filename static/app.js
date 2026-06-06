@@ -312,8 +312,9 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById(loadingMsgId).remove();
 
             if (res.ok) {
-                // 4. Render Grounded Answer (parse citations into visual buttons)
-                const answerHTML = formatAnswerCitations(data.answer);
+                // 4. Render Grounded Answer (parse markdown and citations into styled HTML)
+                const parsedMarkdown = parseMarkdown(data.answer);
+                const answerHTML = formatAnswerCitations(parsedMarkdown);
                 appendMessage(answerHTML, "assistant");
 
                 // 5. Render Pipeline Trace Logs
@@ -414,6 +415,142 @@ document.addEventListener("DOMContentLoaded", () => {
         return answer.replace(citationRegex, (match, chunkId) => {
             return `<button class="citation-link" data-chunk-id="${chunkId}">[${chunkId}]</button>`;
         });
+    }
+
+    // Helper: Parse Markdown syntax (headers, lists, bold, italic, links, code) into styled HTML
+    function parseMarkdown(text) {
+        if (!text) return "";
+
+        const lines = text.split("\n");
+        let htmlLines = [];
+        let inList = false;
+        let listType = null; // 'ul' or 'ol'
+        let inCodeBlock = false;
+
+        // Helper to format inline elements: bold, italic, links, inline code
+        function formatInline(txt) {
+            // Escape HTML tags to prevent XSS and rendering issues, but keep our markdown parsers
+            let escaped = txt
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+
+            // Bold: **text** or __text__
+            escaped = escaped.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+            escaped = escaped.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+
+            // Italic: *text* or _text_
+            escaped = escaped.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+            escaped = escaped.replace(/_([^_]+)_/g, "<em>$1</em>");
+
+            // Inline code: `code`
+            escaped = escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+            // Links: [text](url)
+            escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+            return escaped;
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i];
+            
+            // Handle code blocks
+            if (line.trim().startsWith("```")) {
+                if (inCodeBlock) {
+                    htmlLines.push("</code></pre>");
+                    inCodeBlock = false;
+                } else {
+                    htmlLines.push("<pre><code>");
+                    inCodeBlock = true;
+                }
+                continue;
+            }
+
+            if (inCodeBlock) {
+                // Inside code block, escape and keep raw line
+                let escapedLine = line
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+                htmlLines.push(escapedLine);
+                continue;
+            }
+
+            let trimmed = line.trim();
+
+            // Handle empty lines
+            if (trimmed === "") {
+                if (inList) {
+                    htmlLines.push(`</${listType}>`);
+                    inList = false;
+                    listType = null;
+                }
+                htmlLines.push("<div class='chat-space'></div>");
+                continue;
+            }
+
+            // Headers
+            const headerMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+            if (headerMatch) {
+                if (inList) {
+                    htmlLines.push(`</${listType}>`);
+                    inList = false;
+                    listType = null;
+                }
+                const level = headerMatch[1].length;
+                const content = formatInline(headerMatch[2]);
+                htmlLines.push(`<h${level}>${content}</h${level}>`);
+                continue;
+            }
+
+            // Lists
+            const bulletMatch = trimmed.match(/^[\*\-]\s+(.*)$/);
+            const numberMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+
+            if (bulletMatch) {
+                if (!inList || listType !== "ul") {
+                    if (inList) htmlLines.push(`</${listType}>`);
+                    htmlLines.push("<ul>");
+                    inList = true;
+                    listType = "ul";
+                }
+                const content = formatInline(bulletMatch[1]);
+                htmlLines.push(`<li>${content}</li>`);
+                continue;
+            }
+
+            if (numberMatch) {
+                if (!inList || listType !== "ol") {
+                    if (inList) htmlLines.push(`</${listType}>`);
+                    htmlLines.push("<ol>");
+                    inList = true;
+                    listType = "ol";
+                }
+                const content = formatInline(numberMatch[2]);
+                htmlLines.push(`<li>${content}</li>`);
+                continue;
+            }
+
+            // Standard paragraph
+            if (inList) {
+                htmlLines.push(`</${listType}>`);
+                inList = false;
+                listType = null;
+            }
+
+            const content = formatInline(trimmed);
+            htmlLines.push(`<p>${content}</p>`);
+        }
+
+        if (inList) {
+            htmlLines.push(`</${listType}>`);
+        }
+        if (inCodeBlock) {
+            htmlLines.push("</code></pre>");
+        }
+
+        return htmlLines.join("\n");
     }
 
     // Helper: Bind citation button click scroll handlers
